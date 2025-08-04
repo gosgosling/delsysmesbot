@@ -3,7 +3,7 @@ services:
     name: telegram-system-cleaner-bot
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    startCommand: python bot_strict.py
     envVars:
       - key: BOT_TOKEN
         value: 8353868163:AAHND3Mn-IDKIwx4j9zODouuc-pVr2147Ek 
