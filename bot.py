@@ -161,19 +161,38 @@ class SystemMessageCleanerBot:
             if hasattr(message, message_type) and getattr(message, message_type) is not None:
                 return True
         
-        # Дополнительные проверки для системных сообщений
+        # Проверяем текст сообщения на системные уведомления
+        if message.text:
+            # Уведомления о добавлении участников
+            if any(keyword in message.text for keyword in [
+                'добавил(а)', 'добавил', 'добавила', 'присоединился', 'присоединилась',
+                'added', 'joined', 'присоединился к группе', 'присоединилась к группе'
+            ]):
+                return True
+            
+            # Уведомления о выходе участников
+            if any(keyword in message.text for keyword in [
+                'покинул(а)', 'покинул', 'покинула', 'left', 'ушел', 'ушла',
+                'покинул группу', 'покинула группу', 'ушел из группы', 'ушла из группы'
+            ]):
+                return True
+            
+            # Уведомления об изменениях чата
+            if any(keyword in message.text for keyword in [
+                'изменил(а) название', 'изменил название', 'изменила название',
+                'изменил(а) фото', 'изменил фото', 'изменила фото',
+                'удалил(а) фото', 'удалил фото', 'удалила фото',
+                'закрепил(а)', 'закрепил', 'закрепила', 'pinned'
+            ]):
+                return True
+        
+        # Проверяем специальные случаи системных сообщений
         # Системные сообщения обычно не имеют текста или имеют специальный формат
         if message.text is None and not any([
             message.photo, message.video, message.audio, message.document, 
             message.voice, message.video_note, message.sticker, message.animation
         ]):
             # Если нет текста и нет медиа - это скорее всего системное сообщение
-            return True
-        
-        # Проверяем специальные случаи системных сообщений
-        if message.text and message.text.startswith('👋') and 'присоединился' in message.text:
-            return True
-        if message.text and message.text.startswith('👋') and 'покинул' in message.text:
             return True
         
         return False
@@ -186,15 +205,15 @@ class SystemMessageCleanerBot:
         
         # Определяем тип по содержимому
         if message.text:
-            if 'присоединился' in message.text:
+            if any(keyword in message.text for keyword in ['добавил(а)', 'добавил', 'добавила', 'присоединился', 'присоединилась', 'added', 'joined']):
                 return 'new_chat_members'
-            elif 'покинул' in message.text:
+            elif any(keyword in message.text for keyword in ['покинул(а)', 'покинул', 'покинула', 'left', 'ушел', 'ушла']):
                 return 'left_chat_member'
-            elif 'название' in message.text and 'изменено' in message.text:
+            elif any(keyword in message.text for keyword in ['название', 'title']):
                 return 'new_chat_title'
-            elif 'фото' in message.text and 'изменено' in message.text:
+            elif any(keyword in message.text for keyword in ['фото', 'photo']):
                 return 'new_chat_photo'
-            elif 'закрепил' in message.text:
+            elif any(keyword in message.text for keyword in ['закрепил(а)', 'закрепил', 'закрепила', 'pinned']):
                 return 'pinned_message'
         
         return "unknown"

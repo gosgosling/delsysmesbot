@@ -1,6 +1,4 @@
 import logging
-import os
-from flask import Flask, request, jsonify
 from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
 from config import BOT_TOKEN, SYSTEM_MESSAGE_TYPES
@@ -12,10 +10,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Создаем Flask приложение
-app = Flask(__name__)
-
-class SystemMessageCleanerBot:
+class DebugSystemMessageCleanerBot:
     def __init__(self):
         self.application = Application.builder().token(BOT_TOKEN).build()
         self.setup_handlers()
@@ -37,55 +32,41 @@ class SystemMessageCleanerBot:
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
         welcome_text = """
-🤖 **Бот для очистки системных сообщений**
+🔍 **Отладочный бот для очистки системных сообщений**
 
-Привет! Я автоматически удаляю системные сообщения из чатов.
-
-**Что я удаляю:**
-• Сообщения о входе/выходе участников
-• Изменения названия чата
-• Изменения фото чата
-• Сообщения о создании чата
-• Закрепленные сообщения
-• И другие системные уведомления
+Это тестовая версия бота для проверки логики определения системных сообщений.
 
 **Команды:**
 /start - показать это сообщение
 /help - справка
 /status - статус бота
 
-Для работы добавьте меня в чат и дайте права администратора для удаления сообщений.
+Бот будет показывать информацию о каждом сообщении, но НЕ будет их удалять.
         """
         await update.message.reply_text(welcome_text, parse_mode='Markdown')
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /help"""
         help_text = """
-📖 **Справка по использованию бота**
+🔍 **Справка по отладочному боту**
 
-**Как использовать:**
-1. Добавьте бота в чат
-2. Сделайте бота администратором
-3. Дайте права на удаление сообщений
-4. Бот автоматически начнет удалять системные сообщения
+Этот бот показывает информацию о каждом сообщении в чате:
 
-**Требования:**
-• Бот должен быть администратором чата
-• Права на удаление сообщений
-• Права на просмотр сообщений
+**Что показывает бот:**
+• Текст сообщения
+• Тип сообщения (системное/обычное)
+• Причины определения типа
+• Рекомендации по удалению
 
-**Поддерживаемые типы системных сообщений:**
-• new_chat_members - новые участники
-• left_chat_member - вышедшие участники
-• new_chat_title - изменение названия
-• new_chat_photo - изменение фото
-• pinned_message - закрепленные сообщения
-• И многие другие...
+**Используйте для:**
+• Проверки логики определения системных сообщений
+• Отладки проблем с удалением
+• Настройки фильтров
 
 **Команды:**
 /start - главное меню
 /help - эта справка
-/status - статус работы
+/status - статус бота
         """
         await update.message.reply_text(help_text, parse_mode='Markdown')
     
@@ -98,7 +79,7 @@ class SystemMessageCleanerBot:
             bot_member = await chat.get_member(context.bot.id)
             
             status_text = f"""
-📊 **Статус бота в чате**
+📊 **Статус отладочного бота в чате**
 
 **Чат:** {chat.title or chat.first_name}
 **Тип чата:** {chat.type}
@@ -109,6 +90,7 @@ class SystemMessageCleanerBot:
 • Может удалять сообщения: {'✅' if bot_member.can_delete_messages else '❌'}
 • Может просматривать сообщения: {'✅' if bot_member.can_read_messages else '❌'}
 
+**Режим:** 🔍 Отладка (сообщения не удаляются)
 **Статус:** {'🟢 Активен' if bot_member.status in ['administrator', 'creator'] else '🔴 Неактивен'}
             """
         except Exception as e:
@@ -117,47 +99,60 @@ class SystemMessageCleanerBot:
         await update.message.reply_text(status_text, parse_mode='Markdown')
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик всех сообщений для удаления системных"""
+        """Обработчик всех сообщений для отладки"""
         message = update.message
         
-        # Проверяем, является ли сообщение системным
-        if self.is_system_message(message):
-            try:
-                # Удаляем системное сообщение
-                await message.delete()
-                logger.info(f"Удалено системное сообщение типа {self.get_message_type(message)} в чате {message.chat.id}")
-                
-                # Уведомляем только администраторов в личные сообщения
-                await self.notify_admins_privately(message, context)
-                    
-            except Exception as e:
-                logger.error(f"Ошибка при удалении сообщения: {e}")
-                # Если не удалось удалить, отправляем уведомление только администраторам
-                try:
-                    await self.notify_admins_privately(message, context, error=True)
-                except:
-                    pass
-    
-    async def notify_admins_privately(self, message, context, error=False):
-        """Уведомляет администраторов в личные сообщения"""
+        # Анализируем сообщение
+        is_system = self.is_system_message(message)
+        message_type = self.get_message_type(message)
+        
+        # Создаем отладочную информацию
+        debug_info = f"""
+🔍 **Анализ сообщения:**
+
+**Отправитель:** {message.from_user.first_name if message.from_user else 'Unknown'}
+**Текст:** {message.text[:100] + '...' if message.text and len(message.text) > 100 else message.text or 'Нет текста'}
+**Тип:** {message_type}
+**Системное:** {'✅ Да' if is_system else '❌ Нет'}
+
+**Атрибуты сообщения:**
+"""
+        
+        # Проверяем системные атрибуты
+        for attr in SYSTEM_MESSAGE_TYPES:
+            value = getattr(message, attr, None)
+            if value is not None:
+                debug_info += f"• {attr}: ✅ {value}\n"
+        
+        # Проверяем наличие контента
+        debug_info += f"""
+**Контент:**
+• Текст: {'✅' if message.text else '❌'}
+• Фото: {'✅' if message.photo else '❌'}
+• Видео: {'✅' if message.video else '❌'}
+• Аудио: {'✅' if message.audio else '❌'}
+• Документ: {'✅' if message.document else '❌'}
+• Голос: {'✅' if message.voice else '❌'}
+• Стикер: {'✅' if message.sticker else '❌'}
+
+**Рекомендация:** {'🗑️ УДАЛИТЬ' if is_system else '✅ ОСТАВИТЬ'}
+        """
+        
+        # Отправляем отладочную информацию только администраторам
         try:
             admins = await message.chat.get_administrators()
             for admin in admins:
-                if admin.user.id != context.bot.id:  # Не уведомляем самого бота
+                if admin.user.id != context.bot.id:
                     try:
-                        if error:
-                            notification_text = f"⚠️ Не удалось удалить системное сообщение в чате {message.chat.title}. Проверьте права бота."
-                        else:
-                            notification_text = f"🗑️ В чате {message.chat.title} удалено системное сообщение типа: {self.get_message_type(message)}"
-                        
                         await context.bot.send_message(
                             chat_id=admin.user.id,
-                            text=notification_text
+                            text=debug_info,
+                            parse_mode='Markdown'
                         )
                     except:
-                        pass  # Игнорируем ошибки отправки в личные сообщения
+                        pass
         except Exception as e:
-            logger.error(f"Ошибка при уведомлении администраторов: {e}")
+            logger.error(f"Ошибка при отправке отладочной информации: {e}")
     
     def is_system_message(self, message) -> bool:
         """Проверяет, является ли сообщение системным"""
@@ -221,58 +216,13 @@ class SystemMessageCleanerBot:
             elif any(keyword in message.text for keyword in ['закрепил(а)', 'закрепил', 'закрепила', 'pinned']):
                 return 'pinned_message'
         
-        return "unknown"
+        return "user_message"
     
-    async def start_polling(self):
+    def run(self):
         """Запуск бота"""
-        logger.info("Запуск бота для очистки системных сообщений...")
-        await self.application.initialize()
-        await self.application.start()
-        await self.application.updater.start_polling()
+        logger.info("Запуск отладочного бота для очистки системных сообщений...")
+        self.application.run_polling(allowed_updates=Update.ALL_TYPES)
 
-# Создаем экземпляр бота
-bot = SystemMessageCleanerBot()
-
-# Flask маршруты
-@app.route('/')
-def home():
-    return jsonify({
-        "status": "running",
-        "bot": "Telegram System Message Cleaner",
-        "message": "Bot is running successfully!"
-    })
-
-@app.route('/health')
-def health():
-    return jsonify({"status": "healthy"})
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    """Webhook для Telegram (альтернативный способ)"""
-    update = Update.de_json(request.get_json(), bot.application.bot)
-    bot.application.process_update(update)
-    return jsonify({"status": "ok"})
-
-# Запуск приложения
 if __name__ == "__main__":
-    import asyncio
-    
-    # Запускаем бота в фоновом режиме
-    async def run_bot():
-        await bot.start_polling()
-    
-    # Запускаем Flask сервер
-    def run_flask():
-        port = int(os.environ.get('PORT', 10000))
-        app.run(host='0.0.0.0', port=port, debug=False)
-    
-    # Запускаем оба сервиса
-    import threading
-    
-    # Запускаем бота в отдельном потоке
-    bot_thread = threading.Thread(target=lambda: asyncio.run(run_bot()))
-    bot_thread.daemon = True
-    bot_thread.start()
-    
-    # Запускаем Flask сервер
-    run_flask() 
+    bot = DebugSystemMessageCleanerBot()
+    bot.run() 
