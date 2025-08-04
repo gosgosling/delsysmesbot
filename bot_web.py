@@ -125,27 +125,39 @@ class SystemMessageCleanerBot:
             try:
                 # Удаляем системное сообщение
                 await message.delete()
-                logger.info(f"Удалено системное сообщение в чате {message.chat.id}")
+                logger.info(f"Удалено системное сообщение типа {self.get_message_type(message)} в чате {message.chat.id}")
                 
-                # Отправляем уведомление в лог (опционально)
-                if message.chat.type in ['group', 'supergroup']:
-                    log_message = f"🗑️ Удалено системное сообщение типа: {self.get_message_type(message)}"
-                    await context.bot.send_message(
-                        chat_id=message.chat.id,
-                        text=log_message,
-                        reply_to_message_id=None
-                    )
+                # Уведомляем только администраторов в личные сообщения
+                await self.notify_admins_privately(message, context)
                     
             except Exception as e:
                 logger.error(f"Ошибка при удалении сообщения: {e}")
-                # Если не удалось удалить, отправляем уведомление
+                # Если не удалось удалить, отправляем уведомление только администраторам
                 try:
-                    await context.bot.send_message(
-                        chat_id=message.chat.id,
-                        text="⚠️ Не удалось удалить системное сообщение. Проверьте права бота."
-                    )
+                    await self.notify_admins_privately(message, context, error=True)
                 except:
                     pass
+    
+    async def notify_admins_privately(self, message, context, error=False):
+        """Уведомляет администраторов в личные сообщения"""
+        try:
+            admins = await message.chat.get_administrators()
+            for admin in admins:
+                if admin.user.id != context.bot.id:  # Не уведомляем самого бота
+                    try:
+                        if error:
+                            notification_text = f"⚠️ Не удалось удалить системное сообщение в чате {message.chat.title}. Проверьте права бота."
+                        else:
+                            notification_text = f"🗑️ В чате {message.chat.title} удалено системное сообщение типа: {self.get_message_type(message)}"
+                        
+                        await context.bot.send_message(
+                            chat_id=admin.user.id,
+                            text=notification_text
+                        )
+                    except:
+                        pass  # Игнорируем ошибки отправки в личные сообщения
+        except Exception as e:
+            logger.error(f"Ошибка при уведомлении администраторов: {e}")
     
     def is_system_message(self, message) -> bool:
         """Проверяет, является ли сообщение системным"""

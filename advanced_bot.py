@@ -23,8 +23,8 @@ class AdvancedSystemMessageCleanerBot:
         }
         self.settings = {
             'auto_delete': True,
-            'log_deletions': True,
-            'notify_admins': False
+            'log_deletions': False,  # По умолчанию отключено
+            'notify_admins': True    # По умолчанию включено
         }
         self.setup_handlers()
     
@@ -82,8 +82,8 @@ class AdvancedSystemMessageCleanerBot:
 
 **Настройки:**
 • auto_delete - автоматическое удаление
-• log_deletions - логирование удалений
-• notify_admins - уведомления админов
+• log_deletions - логирование удалений в чат
+• notify_admins - уведомления админов в личные сообщения
 
 **Требования для работы:**
 • Права администратора
@@ -144,7 +144,7 @@ class AdvancedSystemMessageCleanerBot:
 
 **Настройки:**
 • Автоудаление: {'✅' if self.settings['auto_delete'] else '❌'}
-• Логирование: {'✅' if self.settings['log_deletions'] else '❌'}
+• Логирование в чат: {'✅' if self.settings['log_deletions'] else '❌'}
 • Уведомления админов: {'✅' if self.settings['notify_admins'] else '❌'}
         """
         await update.message.reply_text(stats_text, parse_mode='Markdown')
@@ -160,7 +160,7 @@ class AdvancedSystemMessageCleanerBot:
             ],
             [
                 InlineKeyboardButton(
-                    f"{'✅' if self.settings['log_deletions'] else '❌'} Логирование", 
+                    f"{'✅' if self.settings['log_deletions'] else '❌'} Логирование в чат", 
                     callback_data='toggle_log_deletions'
                 )
             ],
@@ -197,7 +197,7 @@ class AdvancedSystemMessageCleanerBot:
             await query.edit_message_text("✅ Настройка 'Автоудаление' изменена!")
         elif query.data == 'toggle_log_deletions':
             self.settings['log_deletions'] = not self.settings['log_deletions']
-            await query.edit_message_text("✅ Настройка 'Логирование' изменена!")
+            await query.edit_message_text("✅ Настройка 'Логирование в чат' изменена!")
         elif query.data == 'toggle_notify_admins':
             self.settings['notify_admins'] = not self.settings['notify_admins']
             await query.edit_message_text("✅ Настройка 'Уведомления админов' изменена!")
@@ -222,7 +222,7 @@ class AdvancedSystemMessageCleanerBot:
                 
                 logger.info(f"Удалено системное сообщение типа {self.get_message_type(message)} в чате {message.chat.id}")
                 
-                # Логирование в чат
+                # Логирование в чат (если включено)
                 if self.settings['log_deletions'] and message.chat.type in ['group', 'supergroup']:
                     log_message = f"🗑️ Удалено системное сообщение: {self.get_message_type(message)}"
                     await context.bot.send_message(
@@ -231,36 +231,39 @@ class AdvancedSystemMessageCleanerBot:
                         reply_to_message_id=None
                     )
                 
-                # Уведомление администраторов
+                # Уведомление администраторов в личные сообщения
                 if self.settings['notify_admins']:
-                    await self.notify_admins(message, context)
+                    await self.notify_admins_privately(message, context)
                     
             except Exception as e:
                 self.stats['errors'] += 1
                 logger.error(f"Ошибка при удалении сообщения: {e}")
                 
-                # Уведомление об ошибке
-                try:
-                    await context.bot.send_message(
-                        chat_id=message.chat.id,
-                        text="⚠️ Не удалось удалить системное сообщение. Проверьте права бота."
-                    )
-                except:
-                    pass
+                # Уведомление об ошибке только администраторам
+                if self.settings['notify_admins']:
+                    try:
+                        await self.notify_admins_privately(message, context, error=True)
+                    except:
+                        pass
     
-    async def notify_admins(self, message, context):
-        """Уведомление администраторов о удалении"""
+    async def notify_admins_privately(self, message, context, error=False):
+        """Уведомляет администраторов в личные сообщения"""
         try:
             admins = await message.chat.get_administrators()
             for admin in admins:
                 if admin.user.id != context.bot.id:  # Не уведомляем самого бота
                     try:
+                        if error:
+                            notification_text = f"⚠️ Не удалось удалить системное сообщение в чате {message.chat.title}. Проверьте права бота."
+                        else:
+                            notification_text = f"🗑️ В чате {message.chat.title} удалено системное сообщение типа: {self.get_message_type(message)}"
+                        
                         await context.bot.send_message(
                             chat_id=admin.user.id,
-                            text=f"🗑️ В чате {message.chat.title} удалено системное сообщение типа: {self.get_message_type(message)}"
+                            text=notification_text
                         )
                     except:
-                        pass  # Игнорируем ошибки отправки
+                        pass  # Игнорируем ошибки отправки в личные сообщения
         except Exception as e:
             logger.error(f"Ошибка при уведомлении администраторов: {e}")
     
