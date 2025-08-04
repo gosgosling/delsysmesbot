@@ -88,10 +88,11 @@ class SystemMessageCleanerBot:
         """Обработчик команды /status"""
         chat = update.effective_chat
         
-        # Проверяем права бота
-        bot_member = await chat.get_member(context.bot.id)
-        
-        status_text = f"""
+        try:
+            # Проверяем права бота
+            bot_member = await chat.get_member(context.bot.id)
+            
+            status_text = f"""
 📊 **Статус бота в чате**
 
 **Чат:** {chat.title or chat.first_name}
@@ -104,7 +105,10 @@ class SystemMessageCleanerBot:
 • Может просматривать сообщения: {'✅' if bot_member.can_read_messages else '❌'}
 
 **Статус:** {'🟢 Активен' if bot_member.status in ['administrator', 'creator'] else '🔴 Неактивен'}
-        """
+            """
+        except Exception as e:
+            status_text = f"❌ Ошибка при получении статуса: {e}"
+        
         await update.message.reply_text(status_text, parse_mode='Markdown')
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
