@@ -1,6 +1,6 @@
 services:
   - type: worker
-    name: telegram-system-cleaner-bot
+    name: telegram-system-cleaner-bot-worker
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
