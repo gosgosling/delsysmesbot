@@ -115,7 +115,7 @@ class StrictSystemMessageCleanerBot:
         message = update.message
         
         # Строгая проверка системных сообщений
-        if self.is_strict_system_message(message):
+        if self.is_strict_system_message(message, context):
             try:
                 # Удаляем системное сообщение
                 await message.delete()
@@ -156,17 +156,23 @@ class StrictSystemMessageCleanerBot:
         except Exception as e:
             logger.error(f"Ошибка при уведомлении администраторов: {e}")
     
-    def is_strict_system_message(self, message) -> bool:
+    def is_strict_system_message(self, message, context) -> bool:
         """Строгая проверка системных сообщений"""
         
-        # 1. Проверяем системные атрибуты Telegram
+        # 1. Проверяем системные атрибуты Telegram (самый надежный способ)
         for message_type in SYSTEM_MESSAGE_TYPES:
             if hasattr(message, message_type) and getattr(message, message_type) is not None:
                 logger.info(f"Системное сообщение по атрибуту: {message_type}")
                 return True
         
-        # 2. Проверяем текст на системные уведомления
-        if message.text:
+        # 2. Проверяем, что сообщение НЕ от обычного пользователя
+        if message.from_user and message.from_user.id != context.bot.id:
+            # Если сообщение от пользователя - это НЕ системное сообщение
+            logger.info(f"Сообщение от пользователя - НЕ системное: {message.text[:30] if message.text else 'No text'}")
+            return False
+        
+        # 3. Проверяем текст на системные уведомления (только если НЕТ отправителя)
+        if message.text and not message.from_user:
             # Уведомления о добавлении участников
             add_keywords = ['добавил(а)', 'добавил', 'добавила', 'added']
             if any(keyword in message.text for keyword in add_keywords):
@@ -185,7 +191,7 @@ class StrictSystemMessageCleanerBot:
                 logger.info(f"Системное сообщение по ключевому слову изменения: {message.text}")
                 return True
         
-        # 3. Проверяем отсутствие контента (чистые системные сообщения)
+        # 4. Проверяем отсутствие контента (чистые системные сообщения)
         if message.text is None and not any([
             message.photo, message.video, message.audio, message.document, 
             message.voice, message.video_note, message.sticker, message.animation
@@ -193,11 +199,8 @@ class StrictSystemMessageCleanerBot:
             logger.info("Системное сообщение без контента")
             return True
         
-        # 4. Если сообщение от пользователя и содержит контент - НЕ системное
-        if message.from_user and message.from_user.id != context.bot.id:
-            if message.text or message.photo or message.video or message.audio or message.document or message.voice or message.video_note or message.sticker or message.animation:
-                return False
-        
+        # 5. Если дошли до сюда - это НЕ системное сообщение
+        logger.info(f"Сообщение НЕ системное: {message.text[:30] if message.text else 'No text'}")
         return False
     
     def get_message_type(self, message) -> str:
