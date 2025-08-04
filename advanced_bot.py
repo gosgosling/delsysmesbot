@@ -269,9 +269,26 @@ class AdvancedSystemMessageCleanerBot:
     
     def is_system_message(self, message) -> bool:
         """Проверяет, является ли сообщение системным"""
+        # Проверяем, есть ли у сообщения системные атрибуты
         for message_type in SYSTEM_MESSAGE_TYPES:
             if hasattr(message, message_type) and getattr(message, message_type) is not None:
                 return True
+        
+        # Дополнительные проверки для системных сообщений
+        # Системные сообщения обычно не имеют текста или имеют специальный формат
+        if message.text is None and not any([
+            message.photo, message.video, message.audio, message.document, 
+            message.voice, message.video_note, message.sticker, message.animation
+        ]):
+            # Если нет текста и нет медиа - это скорее всего системное сообщение
+            return True
+        
+        # Проверяем специальные случаи системных сообщений
+        if message.text and message.text.startswith('👋') and 'присоединился' in message.text:
+            return True
+        if message.text and message.text.startswith('👋') and 'покинул' in message.text:
+            return True
+        
         return False
     
     def get_message_type(self, message) -> str:
@@ -279,6 +296,20 @@ class AdvancedSystemMessageCleanerBot:
         for message_type in SYSTEM_MESSAGE_TYPES:
             if hasattr(message, message_type) and getattr(message, message_type) is not None:
                 return message_type
+        
+        # Определяем тип по содержимому
+        if message.text:
+            if 'присоединился' in message.text:
+                return 'new_chat_members'
+            elif 'покинул' in message.text:
+                return 'left_chat_member'
+            elif 'название' in message.text and 'изменено' in message.text:
+                return 'new_chat_title'
+            elif 'фото' in message.text and 'изменено' in message.text:
+                return 'new_chat_photo'
+            elif 'закрепил' in message.text:
+                return 'pinned_message'
+        
         return "unknown"
     
     def run(self):
